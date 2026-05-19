@@ -2,7 +2,7 @@ name: Kufar Free Bot
 # Checks Kufar every 15 min for free ads
 on:
   schedule:
-    - cron: '*/15 * * * *'
+    - cron: '*/5 * * * *'
   workflow_dispatch:
 
 jobs:
