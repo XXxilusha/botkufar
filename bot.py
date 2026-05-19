@@ -3,7 +3,7 @@ import os
 import time
 import requests
 import telebot
-from config import BOT_TOKEN, CHAT_ID, KUFAR_API_URL, KUFAR_PARAMS, SEEN_FILE, KEYWORDS
+from config import BOT_TOKEN, CHAT_ID, KUFAR_API_URL, KUFAR_PARAMS, SEEN_FILE, BLACKLIST
 
 bot = telebot.TeleBot(BOT_TOKEN)
 
@@ -61,22 +61,17 @@ def parse_ad(ad):
     }
 
 
-def match_keywords(ad):
+def is_blacklisted(ad):
     text = (ad["title"] + " " + ad["description"]).lower()
-    matched = []
-    for category, words in KEYWORDS.items():
-        for word in words:
-            if word.lower() in text:
-                matched.append(category)
-                break
-    return matched
+    for word in BLACKLIST:
+        if word.lower() in text:
+            return True
+    return False
 
 
-def send_to_telegram(ad, categories):
-    tags = " ".join(categories)
+def send_to_telegram(ad):
     text = (
-        f"🆓 {tags}\n"
-        f"<b>{ad['title']}</b>\n\n"
+        f"🆓 <b>{ad['title']}</b>\n\n"
         f"{ad['description']}\n\n"
         f"<a href=\"{ad['link']}\">Открыть на Kufar</a>"
     )
@@ -93,19 +88,20 @@ def main():
         return
 
     new_count = 0
+    blocked = 0
     for ad in ads:
         parsed = parse_ad(ad)
         if not parsed["id"] or parsed["id"] in seen:
             continue
 
-        categories = match_keywords(parsed)
-        if not categories:
+        if is_blacklisted(parsed):
+            blocked += 1
             seen.add(parsed["id"])
             continue
 
-        print(f"  Новое [{', '.join(categories)}]: {parsed['title']}")
+        print(f"  Новое: {parsed['title']}")
         try:
-            send_to_telegram(parsed, categories)
+            send_to_telegram(parsed)
             new_count += 1
         except Exception as e:
             print(f"  Ошибка отправки: {e}")
@@ -113,7 +109,7 @@ def main():
         seen.add(parsed["id"])
 
     save_seen(seen)
-    print(f"Готово. Отправлено: {new_count}, всего просмотрено: {len(seen)}")
+    print(f"Готово. Отправлено: {new_count}, заблокировано (животные): {blocked}, всего: {len(seen)}")
 
 
 if __name__ == "__main__":
