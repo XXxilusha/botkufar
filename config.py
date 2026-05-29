@@ -1,18 +1,34 @@
 import os
 
+# ===== НАСТРОЙКИ БОТА =====
+
+# Токен бота из @BotFather (или берёт из переменной окружения на GitHub)
 BOT_TOKEN = os.environ.get("BOT_TOKEN", "8948238511:AAEYX3CjbejSdRThCUSJci6gL4jxjp_9xeA")
+
+# Твой Telegram ID (кому слать сообщения)
 CHAT_ID = os.environ.get("CHAT_ID", "955359991")
 
-KUFAR_API_URL = "https://api.kufar.by/search-api/v2/search/rendered-paginated"
+
+# ===== НАСТРОЙКИ KUFAR =====
+
+# Ссылка на API Kufar
+KUFAR_API = "https://api.kufar.by/search-api/v2/search/rendered-paginated"
+
+# Параметры поиска
 KUFAR_PARAMS = {
-    "rgn": "7",
-    "prc": "r:0,0",
-    "size": "50",
-    "lang": "ru",
-    "sort": "lst.d",
+    "rgn": "7",       # город: Минск
+    "prc": "r:0,0",   # цена: бесплатно
+    "size": "50",      # сколько объявлений загружать за раз
+    "lang": "ru",      # язык: русский
+    "sort": "lst.d",   # сортировка: новые первые
 }
 
+# Файл где хранятся ID уже отправленных объявлений (чтобы не слать дубли)
 SEEN_FILE = "seen_ids.json"
+
+
+# ===== ЧЁРНЫЙ СПИСОК =====
+# Объявления с этими словами НЕ будут отправляться (животные и всё связанное)
 
 BLACKLIST = [
     "кот", "кошк", "котён", "котик", "кошеч",
