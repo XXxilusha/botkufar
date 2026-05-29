@@ -15,7 +15,7 @@ SEEN_PATH = os.path.join(os.path.dirname(os.path.abspath(__file__)), SEEN_FILE)
 
 # ---------- РАБОТА С ФАЙЛОМ ДУБЛИКАТОВ ----------
 
-def загрузить_отправленные():
+def load_seen():
     """Читает список ID объявлений, которые уже были отправлены"""
     if os.path.exists(SEEN_PATH):
         with open(SEEN_PATH, "r") as f:
@@ -23,7 +23,7 @@ def загрузить_отправленные():
     return set()
 
 
-def сохранить_отправленные(ids):
+def save_seen(ids):
     """Сохраняет список ID в файл"""
     with open(SEEN_PATH, "w") as f:
         json.dump(list(ids), f)
@@ -31,78 +31,78 @@ def сохранить_отправленные(ids):
 
 # ---------- ЗАГРУЗКА ОБЪЯВЛЕНИЙ С KUFAR ----------
 
-def загрузить_объявления():
+def fetch_ads():
     """Делает запрос к Kufar API и возвращает список объявлений.
     Если сеть не работает — пробует 3 раза с паузой."""
 
-    for попытка in range(3):
+    for attempt in range(3):
         try:
-            ответ = requests.get(KUFAR_API, params=KUFAR_PARAMS, timeout=20)
-            данные = ответ.json()
-            return данные.get("ads", [])
+            response = requests.get(KUFAR_API, params=KUFAR_PARAMS, timeout=20)
+            data = response.json()
+            return data.get("ads", [])
         except Exception:
-            print(f"  Попытка {попытка + 1}/3 не удалась")
-            if попытка < 2:
+            print(f"  Попытка {attempt + 1}/3 не удалась")
+            if attempt < 2:
                 time.sleep(10)
     return []
 
 
 # ---------- ПАРСИНГ ОДНОГО ОБЪЯВЛЕНИЯ ----------
 
-def разобрать_объявление(ad):
+def parse_ad(raw_ad):
     """Достаёт из сырых данных Kufar нужные поля: id, название, ссылку, описание"""
 
     # ID объявления
-    ad_id = str(ad.get("ad_id", ""))
+    ad_id = str(raw_ad.get("ad_id", ""))
 
     # Название
-    название = ad.get("subject", "Без названия")
+    title = raw_ad.get("subject", "Без названия")
 
     # Ссылка
-    ссылка = ad.get("ad_link", "")
-    if not ссылка and ad_id:
-        ссылка = f"https://www.kufar.by/item/{ad_id}"
+    link = raw_ad.get("ad_link", "")
+    if not link and ad_id:
+        link = f"https://www.kufar.by/item/{ad_id}"
 
     # Описание (лежит внутри ad_parameters)
-    описание = ""
-    for param in ad.get("ad_parameters", []):
+    description = ""
+    for param in raw_ad.get("ad_parameters", []):
         if param.get("p") == "description":
-            описание = param.get("vl", "")
+            description = param.get("vl", "")
             break
 
     # Обрезаем длинное описание
-    if len(описание) > 300:
-        описание = описание[:300] + "..."
+    if len(description) > 300:
+        description = description[:300] + "..."
 
     return {
         "id": ad_id,
-        "title": название,
-        "link": ссылка,
-        "description": описание,
+        "title": title,
+        "link": link,
+        "description": description,
     }
 
 
 # ---------- ПРОВЕРКА ЧЁРНОГО СПИСКА ----------
 
-def в_чёрном_списке(объявление):
+def is_blacklisted(ad):
     """Проверяет, содержит ли объявление запрещённые слова (животные и тд)"""
-    текст = (объявление["title"] + " " + объявление["description"]).lower()
-    for слово in BLACKLIST:
-        if слово in текст:
+    text = (ad["title"] + " " + ad["description"]).lower()
+    for word in BLACKLIST:
+        if word in text:
             return True
     return False
 
 
 # ---------- ОТПРАВКА В TELEGRAM ----------
 
-def отправить_в_телеграм(объявление):
+def send_to_telegram(ad):
     """Формирует красивое сообщение и шлёт в Telegram"""
-    сообщение = (
-        f"🆓 <b>{объявление['title']}</b>\n\n"
-        f"{объявление['description']}\n\n"
-        f"<a href=\"{объявление['link']}\">Открыть на Kufar</a>"
+    message = (
+        f"🆓 <b>{ad['title']}</b>\n\n"
+        f"{ad['description']}\n\n"
+        f"<a href=\"{ad['link']}\">Открыть на Kufar</a>"
     )
-    bot.send_message(CHAT_ID, сообщение, parse_mode="HTML")
+    bot.send_message(CHAT_ID, message, parse_mode="HTML")
 
 
 # ---------- ГЛАВНАЯ ФУНКЦИЯ ----------
@@ -111,45 +111,45 @@ def main():
     print("Загрузка объявлений с Kufar...")
 
     # 1. Загружаем список уже отправленных ID
-    отправленные = загрузить_отправленные()
+    seen = load_seen()
 
     # 2. Получаем свежие объявления с Kufar
-    объявления = загрузить_объявления()
+    ads = fetch_ads()
 
-    if not объявления:
+    if not ads:
         print("Kufar недоступен. Попробую в следующий раз.")
         return
 
     # 3. Проходим по каждому объявлению
-    новых = 0
-    заблокировано = 0
+    new_count = 0
+    blocked_count = 0
 
-    for ad in объявления:
-        объявление = разобрать_объявление(ad)
+    for raw_ad in ads:
+        ad = parse_ad(raw_ad)
 
         # Пропускаем если уже отправляли
-        if not объявление["id"] or объявление["id"] in отправленные:
+        if not ad["id"] or ad["id"] in seen:
             continue
 
         # Пропускаем если в чёрном списке (животные)
-        if в_чёрном_списке(объявление):
-            заблокировано += 1
-            отправленные.add(объявление["id"])
+        if is_blacklisted(ad):
+            blocked_count += 1
+            seen.add(ad["id"])
             continue
 
         # Отправляем в Telegram
-        print(f"  Новое: {объявление['title']}")
+        print(f"  Новое: {ad['title']}")
         try:
-            отправить_в_телеграм(объявление)
-            новых += 1
+            send_to_telegram(ad)
+            new_count += 1
         except Exception as e:
             print(f"  Ошибка: {e}")
 
-        отправленные.add(объявление["id"])
+        seen.add(ad["id"])
 
     # 4. Сохраняем обновлённый список
-    сохранить_отправленные(отправленные)
-    print(f"Готово! Отправлено: {новых}, заблокировано: {заблокировано}")
+    save_seen(seen)
+    print(f"Готово! Отправлено: {new_count}, заблокировано: {blocked_count}")
 
 
 # Запуск
